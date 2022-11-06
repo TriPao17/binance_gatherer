@@ -2,6 +2,7 @@ import datetime
 import math
 import os
 import pickle
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta as td, datetime as dt
 from functools import reduce
 from typing import Tuple, List
@@ -10,7 +11,7 @@ import pandas as pd
 from binance import Client
 
 
-#todo create a consistancy check before delivering data
+# todo create a consistancy check before delivering data
 
 class BinanceCustomClient:
     # Instantiation Function
@@ -315,19 +316,29 @@ class BinanceCustomClient:
         # Return Data
         return out_data
 
-    def get_symbols(self, symbols: List[str], interval: str, start_str: str, end_str: str,
-                    verbose: bool = True) -> pd.DataFrame:
+    def get_symbols(self, symbols: List[str], interval: str, start_str: str, end_str: str) -> pd.DataFrame:
         # Loop over symbols
         _symbols_len = len(symbols)
         _symbols_data = []
-        for i, symbol in enumerate(symbols):
-            if verbose is True:
-                print(f"\n### Querying {symbol} ({i + 1} / {_symbols_len}).")
-            _symbols_data.append(self.get_symbol(symbol=symbol,
-                                                 interval=interval,
-                                                 start_str=start_str,
-                                                 end_str=end_str,
-                                                 verbose=True))
+
+        with ThreadPoolExecutor() as executor:
+            futures = []
+            for i, symbol in enumerate(symbols):
+                _future = executor.submit(self.get_symbol,
+                                          symbol=symbol,
+                                          interval=interval,
+                                          start_str=start_str,
+                                          end_str=end_str,
+                                          verbose=True)
+                futures.append(_future)
+
+            # Try to get results
+            for future in futures:
+                try:
+                    _result = future.result()
+                except ValueError:
+                    pass
+                _symbols_data.append(_result)
 
         # Merged data together
         merged_data = reduce(lambda left, right: pd.merge(left, right,
